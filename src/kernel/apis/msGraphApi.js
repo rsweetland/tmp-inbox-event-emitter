@@ -27,11 +27,6 @@ class MSGraphApi {
    */
   constructor () {
     this.oauth = OAuth2.create(oauthCredentials);
-    this.client = MicrosoftGraph.init({
-      authProvider: (callback) => { // TODO - move provider to a separate class
-        callback(null, ACCESS_TOKEN);
-      }
-    });
   }
 
   /**
@@ -50,7 +45,7 @@ class MSGraphApi {
    * @param {string} code - authorization code
    * @returns {Promise<{accessToken: string, refreshToken: string, expiresIn: number}>}
    */
-  exchangeCodeForTokens (code) {
+  async exchangeCodeForTokens (code) {
     const tokenConfig = {
       code,
       redirect_uri: process.env.MS365_REDIRECT_URI,
@@ -58,6 +53,7 @@ class MSGraphApi {
     };
     const result = await this.oauth.authorizationCode.getToken(tokenConfig);
     let tokenData = await this.oauth.accessToken.create(result);
+
     return {
       accessToken: tokenData.access_token,
       refreshToken: tokenData.refresh_token,
@@ -67,10 +63,15 @@ class MSGraphApi {
 
   /**
    * Add a new webhook for mail events.
+   *
+   * @param {string} accessToken
    * @returns {Promise<ISubscription>}
    */
-  async addMailSubscription () {
-    await this.client.api('/subscriptions').post({
+  async addMailSubscription (accessToken) {
+    let client = MicrosoftGraphClient.init({
+      authProvider: callback => callback(null, accessToken)
+    });
+    await client.api('/subscriptions').post({
       changeType: 'created,updated',
       notificationUrl: process.env.MS365_SUBSCRIPTION_CALLBACK_URI,
       resource: "me/mailFolders('Inbox')/messages",
@@ -81,18 +82,42 @@ class MSGraphApi {
   /**
    * Remove a webhook by subscription id.
    * @param {string} id
+   * @param {string} accessToken
    * @returns {Promise<void>}
    */
-  async removeMailSubscription (id) {
-    await this.client.api(`/subscriptions/${id}`).delete();
+  async removeMailSubscription (id, accessToken) {
+    let client = MicrosoftGraphClient.init({
+      authProvider: callback => callback(null, accessToken)
+    });
+    await client.api(`/subscriptions/${id}`).delete();
   }
 
   /**
    * Fetch email message by id.
    * @param {id} string
+   * @param {string} accessToken
    */
-  async fetchEmailMessage (path) {
-    return this.client.api(path).get();
+  async fetchEmailMessage (path, accessToken) {
+    let client = MicrosoftGraphClient.init({
+      authProvider: callback => callback(null, accessToken)
+    });
+    return client.api(path).get();
+  }
+
+  /**
+   * Get a new acces token using the refresh one.
+   * @param {string} refreshToken
+   */
+  async refreshAccessToken (refreshToken) {
+    let token = await this.oauth.accessToken.create({
+      refresh_token: refreshToken
+    });
+    let result = await token.refresh();
+    return {
+      accessToken: result.token.access_token,
+      refreshToken: result.token.refresh_token,
+      expiresIn: result.token.expires_in
+    }
   }
 }
 

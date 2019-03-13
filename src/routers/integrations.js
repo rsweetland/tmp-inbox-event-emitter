@@ -2,12 +2,35 @@ const express = require('express');
 const MSGraphAPI = require('../kernel/apis/msGraphApi');
 
 function IntegrationsRouter () {
-  const router = Express.Router();
+  const router = express.Router();
   const msGraphApi = new MSGraphAPI();
+
+  /**
+   * Helper method used to catch API errors and process token expired ones.
+   * It gets a new access token using the refresh one, saves the info to the repo
+   * and retries the API call.
+   * @param {*} accessToken
+   * @param {*} func function that returns a promise
+   * @returns {Promise<any>}
+   */
+  const withRefreshTokenRetry = function (accessToken, func) {
+    return func(accessToken).catch(async err => {
+      if (err.statusCode === 401) {
+        // refresh token
+        let newToken = await msGraphApi.refreshAccessToken(REFRESH_TOKEN);
+
+        // save new token info to repo
+
+        return func(newToken.accessToken);
+      } else {
+        throw err;
+      }
+    });
+  }
 
   router.get('/connect-ms', async (request, response, next) => {
     try {
-      response.end();
+      response.redirect(await msGraphApi.generateAuthUrl());
     } catch (error) {
       next(error);
     }
@@ -19,7 +42,14 @@ function IntegrationsRouter () {
    */
   router.get('/connect-ms-callback', async (request, response, next) => {
     try {
-      response.redirect(await msGraphApi.generateAuthUrl());
+      let token = await msGraphApi.exchangeCodeForTokens(req.query.code);
+
+      // TODO - save token to DB
+
+      await withRefreshTokenRetry(
+        token.accessToken,
+        msGraphApi.addMailSubscription.bind(msGraphApi)
+      );
     } catch (error) {
       next(error);
     }

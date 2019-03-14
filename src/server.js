@@ -44,6 +44,7 @@ async function bootstrap () {
   expressApp.use(helmet());
   expressApp.use(helmet.referrerPolicy());
   expressApp.use(bodyParser.json());
+  expressApp.use(app.router);
 
   server = http.createServer(expressApp);
   server.once('close', async () => {
